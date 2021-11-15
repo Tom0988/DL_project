@@ -48,6 +48,34 @@ class Covid19Dataset(Dataset):
             self.target = torch.FloatTensor(data[indices])
 
         # normalize features
+        self.data[:, 40:] = \
+            (self.data[:, 40:] - self.data[:, 40:].mean(dim=0, keepdim=True)) \
+            / self.data[:, 40:].std(dim=0, keepdim=True)
+
+        self.dim = self.data.shape[1]
+
+    def __getitem__(self, index):
+        # Returns one sample at a time
+        if self.mode in ['train', 'dev']:
+            # For training
+            return self.data[index], self.target[index]
+        else:
+            # For testing (no target)
+            return self.data[index]
+
+    def __len__(self):
+        # Returns the size of the dataset
+        return len(self.data)
+
+
+def prep_dataloader(path, mode, batch_size, n_jobs=0, target_only=False):
+
+    dataset = Covid19Dataset(path, mode=mode, target_only=target_only)  # Construct dataset
+    dataloader = DataLoader(  # Construct dataloader
+        dataset, batch_size,
+        shuffle=(mode == 'train'), drop_last=False,
+        num_workers=n_jobs, pin_memory=True)
+    return dataloader
 
 
 
