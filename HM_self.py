@@ -16,29 +16,22 @@ from function import get_device, plot_learning_curve, plot_pred
 tr_path = 'covid.train.csv'  # path to training data
 tt_path = 'covid.test.csv'  # path to testing data
 
-myseed = 42069  # set a random seed for reproducibility
-torch.backends.cudnn.deterministic = True
-torch.backends.cudnn.benchmark = False
-np.random.seed(myseed)
-torch.manual_seed(myseed)
-if torch.cuda.is_available():
-    torch.cuda.manual_seed_all(myseed)
-
 
 class Mydataset(Dataset):
     def __init__(self, path, mode='train'):
         self.mode = mode
         with open(path, 'r') as file:  # read csv file
-            dataset = list(csv.reader(file))
-            data = np.array(dataset[1:])[:, 1:].astype(float)  # we dont want first coloum
+            data = list(csv.reader(file))
+            data = np.array(data[1:])[:, 1:].astype(float)  # we dont want first coloum
 
         # maybe we can do some better feature extract here.....?
 
+        feats = list(range(93))
         if mode == "test":
-            feature = data[0:-1]
+            feature = data[:, feats]
             self.feature = torch.FloatTensor(feature)
         else:
-            feature = data[0:-2]
+            feature = data[:, feats]
             label = data[:, -1]
             if mode == 'train':
                 indicate = [i for i in range(len(feature)) if i % 10 != 1]
@@ -48,12 +41,12 @@ class Mydataset(Dataset):
             self.feature = torch.FloatTensor(feature[indicate])
             self.label = torch.FloatTensor(label[indicate])
 
-        self.dim = self.data.shape[1]
-
         #  normalization
-        self.data[:, 40:] = \
-            (self.data[:, 40:] - self.data[:, 40:].mean(dim=0, keepdim=True)) \
-            / self.data[:, 40:].std(dim=0, keepdim=True)
+        self.feature[:, 40:] = \
+            (self.feature[:, 40:] - self.feature[:, 40:].mean(dim=0, keepdim=True)) \
+            / self.feature[:, 40:].std(dim=0, keepdim=True)
+
+        self.dim = self.feature.shape[1]
 
     def __getitem__(self, item):
         # we should set self.mode at upper so that we can use mode inside this function
@@ -97,9 +90,9 @@ def dev(dataset, model, device):
     total_loss = 0
     for x, y in dataset:
         x, y = x.to(device), y.to(device)
-        with torch.no_grad:
+        with torch.no_grad():
             pred = model(x)
-            mse_loss = model.call_loss(pred, y)
+            mse_loss = model.cal_loss(pred, y)
         total_loss += mse_loss.detach().cpu().item() * len(x)
     total_loss = total_loss / len(dataset.dataset)
     return total_loss
@@ -124,7 +117,7 @@ def train(tr_set, dev_set, model, config, device):
             optimizer.zero_grad()
             x, y = x.to(device), y.to(device)
             pred = model(x)
-            mse_loss = model.call_loss(pred, y)
+            mse_loss = model.cal_loss(pred, y)
             mse_loss.backward()
             optimizer.step()
             loss_record['train'].append(mse_loss.detach().cpu().item())
@@ -142,7 +135,7 @@ def train(tr_set, dev_set, model, config, device):
         if early_stop_cnt > config['early_stop']:
             break
     print("finished training...")
-    return  mis_mse, loss_record
+    return mis_mse, loss_record
 
 
 def test(test_set, model, config, device):
@@ -174,20 +167,11 @@ config = {
 
 tr_set = prep_dataloader(tr_path, 'train', config['batch_size'])
 dev_set = prep_dataloader(tr_path, 'dev', config['batch_size'])
-test_set = prep_dataloader(tt_path, 'test', config['batchsize'])
+test_set = prep_dataloader(tt_path, 'test', config['batch_size'])
 
 model = Module(tr_set.dataset.dim).to(device)
-# when we call tr_set.dataset.dim, is it return __getitem__ or __len__?
 
 model_loss, model_loss_record = train(tr_set, dev_set, model, config, device)
 
 print(model_loss)
 print(model_loss_record)
-
-
-
-
-
-
-
-
